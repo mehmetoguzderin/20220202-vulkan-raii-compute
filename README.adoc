@@ -1,0 +1,4 @@
+----
+clang-format -i main.cpp
+clang main.cpp -I./ -std=c++17
+----
