@@ -2,6 +2,28 @@
 
 #include <iostream>
 
+vk::raii::DeviceMemory allocateDeviceMemory( vk::raii::Device const &                   device,
+                                                   vk::PhysicalDeviceMemoryProperties const & memoryProperties,
+                                                   vk::MemoryRequirements const &             memoryRequirements,
+                                                   vk::MemoryPropertyFlags                    memoryPropertyFlags )
+      {
+  uint32_t memoryTypeBits = memoryRequirements.memoryTypeBits;
+  uint32_t memoryTypeIndex = uint32_t( ~0 );
+      for ( uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++ )
+      {
+        if ( ( memoryTypeBits & 1 ) &&
+             ( ( memoryProperties.memoryTypes[i].propertyFlags & memoryPropertyFlags ) == memoryPropertyFlags ) )
+        {
+          memoryTypeIndex = i;
+          break;
+        }
+        memoryTypeBits >>= 1;
+      }
+  assert( memoryTypeIndex != uint32_t( ~0 ) );
+        vk::MemoryAllocateInfo memoryAllocateInfo( memoryRequirements.size, memoryTypeIndex );
+        return vk::raii::DeviceMemory( device, memoryAllocateInfo );
+      }
+
 static std::string AppName = "App";
 static std::string EngineName = "Engine";
 
