@@ -28,6 +28,7 @@ static std::string AppName = "App";
 static std::string EngineName = "Engine";
 
 int main(int argc, char **argv) {
+  int32_t localSize = 8;
   try {
     vk::raii::Context context;
     vk::ApplicationInfo applicationInfo(AppName.c_str(), 1, EngineName.c_str(),
