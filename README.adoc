@@ -1,4 +1,6 @@
 ----
-clang-format -i main.cpp
+clang-format -i main.cpp main.comp
+glslangValidator --target-env vulkan1.2 -V main.comp -o main.comp.spv
+spirv-opt -O main.comp.spv -o main.comp.spv
 clang main.cpp -I./ -std=c++17
 ----

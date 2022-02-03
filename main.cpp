@@ -1,6 +1,9 @@
 #include <vulkan/vulkan_raii.hpp>
 
+#include <fstream>
 #include <iostream>
+#include <string>
+#include <vector>
 
 vk::raii::DeviceMemory
 vkMalloc(vk::raii::Device const &device,
@@ -9,7 +12,7 @@ vkMalloc(vk::raii::Device const &device,
          vk::MemoryPropertyFlags memoryPropertyFlags) {
   uint32_t memoryTypeBits = memoryRequirements.memoryTypeBits;
   uint32_t memoryTypeIndex = uint32_t(~0);
-  for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+  for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
     if ((memoryTypeBits & 1) &&
         ((memoryProperties.memoryTypes[i].propertyFlags &
           memoryPropertyFlags) == memoryPropertyFlags)) {
@@ -22,6 +25,22 @@ vkMalloc(vk::raii::Device const &device,
   vk::MemoryAllocateInfo memoryAllocateInfo(memoryRequirements.size,
                                             memoryTypeIndex);
   return vk::raii::DeviceMemory(device, memoryAllocateInfo);
+}
+
+std::vector<uint32_t> vkReadSPV(std::string const &filename) {
+  std::vector<uint32_t> data;
+  std::ifstream file;
+  file.open(filename, std::ios::in | std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("Failed to open file: " + filename);
+  }
+  file.seekg(0, std::ios::end);
+  uint64_t read_count = static_cast<uint64_t>(file.tellg());
+  file.seekg(0, std::ios::beg);
+  data.resize(static_cast<size_t>(read_count / sizeof(uint32_t)));
+  file.read(reinterpret_cast<char *>(data.data()), read_count);
+  file.close();
+  return data;
 }
 
 static std::string AppName = "App";
@@ -48,6 +67,7 @@ int main(int argc, char **argv) {
         *commandPool, vk::CommandBufferLevel::ePrimary, 1);
     vk::raii::CommandBuffer commandBuffer = std::move(
         vk::raii::CommandBuffers(device, commandBufferAllocateInfo).front());
+    vk::raii::Queue queue(device, 0, 0);
     vk::BufferCreateInfo bufferCreateInfo(
         {}, memorySize, vk::BufferUsageFlagBits::eStorageBuffer);
     vk::raii::Buffer deviceBuffer(device, bufferCreateInfo);
@@ -81,6 +101,32 @@ int main(int argc, char **argv) {
     vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo({},
                                                           *descriptorSetLayout);
     vk::raii::PipelineLayout pipelineLayout(device, pipelineLayoutCreateInfo);
+    std::vector<uint32_t> computeShaderSPV = vkReadSPV("main.comp.spv");
+    vk::ShaderModuleCreateInfo computeShaderModuleCreateInfo({},
+                                                             computeShaderSPV);
+    vk::raii::ShaderModule computeShaderModule(device,
+                                               computeShaderModuleCreateInfo);
+    vk::PipelineShaderStageCreateInfo pipelineShaderStageCreateInfo =
+        vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eCompute,
+                                          *computeShaderModule, "main");
+    vk::ComputePipelineCreateInfo computePipelineCreateInfo(
+        {}, pipelineShaderStageCreateInfo, *pipelineLayout);
+    vk::raii::Pipeline pipeline(device, nullptr, computePipelineCreateInfo);
+    commandBuffer.begin({});
+    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                     *pipelineLayout, 0, {*descriptorSet},
+                                     nullptr);
+    commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *pipeline);
+    commandBuffer.dispatch(localSize, 1, 1);
+    commandBuffer.end();
+    vk::SubmitInfo submitInfo({}, {}, *commandBuffer);
+    queue.submit(submitInfo);
+    device.waitIdle();
+    float *pData = static_cast<float *>(deviceMemory.mapMemory(0, memorySize));
+    for (uint32_t i = 0; i < localSize * localSize; ++i) {
+      std::cout << i << ": " << pData[i] << "\n";
+    }
+    deviceMemory.unmapMemory();
     std::cout << physicalDevice.getProperties().deviceName << "\n";
   } catch (vk::SystemError &err) {
     std::cout << "vk::SystemError: " << err.what() << std::endl;
